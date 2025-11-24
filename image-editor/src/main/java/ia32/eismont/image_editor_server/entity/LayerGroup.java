@@ -1,34 +1,27 @@
 package ia32.eismont.image_editor_server.entity;
 
-import jakarta.persistence.*;
-import lombok.*;
 import java.util.ArrayList;
 import java.util.List;
 
-@Entity
-@Data
-@NoArgsConstructor
-@EqualsAndHashCode(callSuper = true)
-public class LayerGroup extends Layer {
+public class LayerGroup {
+    private List<Layer> layers;
 
-    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
-    @JoinColumn(name = "parent_id")
-    private List<Layer> children = new ArrayList<>();
-
-    public LayerGroup(String name) {
-        super(name);
+    public LayerGroup() {
+        this.layers = new ArrayList<>();
     }
 
     public void addLayer(Layer layer) {
-        children.add(layer);
+        layers.add(layer);
     }
 
-    @Override
-    public LayerGroup clone() {
-        LayerGroup copy = new LayerGroup(this.name + "_copy");
-        for (Layer child : children) {
-            copy.addLayer(child.clone());
+    public Layer getLayer(int index) {
+        if (index >= 0 && index < layers.size()) {
+            return layers.get(index);
         }
-        return copy;
+        throw new IndexOutOfBoundsException("Invalid layer index");
+    }
+
+    public List<Layer> getLayers() {
+        return layers;
     }
 }

@@ -2,9 +2,12 @@ package ia32.eismont.image_editor_server.repository;
 
 import ia32.eismont.image_editor_server.entity.Project;
 import org.springframework.data.jpa.repository.JpaRepository;
-import java.util.List;
-import java.util.UUID;
+import org.springframework.stereotype.Repository;
 
-public interface ProjectRepository extends JpaRepository<Project, UUID> {
-    List<Project> findByOwnerId(UUID ownerId);
+import java.util.Optional;
+
+@Repository
+public interface ProjectRepository extends JpaRepository<Project, Long> {
+    // Знайти проект по ID сесії браузера
+    Optional<Project> findBySessionId(String sessionId);
 }

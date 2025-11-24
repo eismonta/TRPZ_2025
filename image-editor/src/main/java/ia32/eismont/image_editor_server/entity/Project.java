@@ -1,32 +1,53 @@
 package ia32.eismont.image_editor_server.entity;
 
 import jakarta.persistence.*;
-import lombok.*;
-import java.time.LocalDateTime;
-import java.util.UUID;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "projects")
-@Data
-@NoArgsConstructor
 public class Project {
+
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-    private String name;
-    private LocalDateTime createdAt = LocalDateTime.now();
+    // ID сесії користувача (щоб знати, чий це проект)
+    private String sessionId;
 
-    @ManyToOne
-    @JoinColumn(name = "owner_id")
-    private User owner;
+    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    private List<Layer> layers = new ArrayList<>();
 
-    @OneToOne(cascade = CascadeType.ALL)
-    private Layer rootLayer;
+    // Стан проекту (Active/Archived) зберігаємо як рядок
+    private String status = "ACTIVE"; 
 
-    public Project(String name, User owner) {
-        this.name = name;
-        this.owner = owner;
-        this.rootLayer = new LayerGroup("Root");
+    public Project() {}
+
+    public Project(String sessionId) {
+        this.sessionId = sessionId;
     }
+
+    // --- Методи для роботи з шарами ---
+    public void addLayer(Layer layer) {
+        this.layers.add(layer);
+    }
+
+    public Layer getLayer(int index) {
+        return layers.get(index);
+    }
+
+    public List<Layer> getLayers() {
+        return layers;
+    }
+
+    public void setLayers(List<Layer> layers) {
+        this.layers = layers;
+    }
+
+    // --- Getters/Setters ---
+    public Long getId() { return id; }
+    public String getSessionId() { return sessionId; }
+    public void setSessionId(String sessionId) { this.sessionId = sessionId; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
 }

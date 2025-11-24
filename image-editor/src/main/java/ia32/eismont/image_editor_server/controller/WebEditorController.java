@@ -1,51 +1,71 @@
 package ia32.eismont.image_editor_server.controller;
 
-import ia32.eismont.image_editor_server.entity.User;
-import ia32.eismont.image_editor_server.service.AuthenticationService;
 import ia32.eismont.image_editor_server.service.EditorService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import jakarta.servlet.http.HttpSession;
+import java.io.IOException;
+import java.util.Collections;
 import java.util.Map;
 
-@RestController
-@RequestMapping("/api")
+@Controller
 public class WebEditorController {
 
-    @Autowired private AuthenticationService authService;
-    @Autowired private EditorService editorService;
+    private final EditorService editorService;
 
-    @GetMapping("/hello")
-    public String hello() { return "Server is running!"; }
-
-    @PostMapping("/login")
-    public String login(@RequestBody Map<String, String> data) {
-        User user = authService.login(data.get("email"), data.get("password"));
-        return (user != null) ? "Login Success: " + user.getUsername() : "Login Failed";
+    @Autowired
+    public WebEditorController(EditorService editorService) {
+        this.editorService = editorService;
     }
 
-    @PostMapping("/register")
-    public String register(@RequestBody Map<String, String> data) {
-        authService.register(data.get("username"), data.get("email"), data.get("password"));
-        return "Registered!";
-    }
+    // ВАЖЛИВО: Ми видалили метод @GetMapping("/"), 
+    // щоб Spring автоматично відкривав index.html з папки static.
+    // Це найнадійніший спосіб.
 
-    // Новий метод для тестування патерна State
-    // Виклик: POST /api/state?status=archived
-    @PostMapping("/state")
-    public String setProjectState(@RequestParam String status) {
-        editorService.changeState(status);
-        return "Status changed to: " + status;
-    }
-    
-    // Онови метод saveImage, щоб ловити помилку
-    @PostMapping("/save")
-    public String saveImage(@RequestBody Map<String, String> payload) {
+    @PostMapping("/api/upload")
+    @ResponseBody
+    public ResponseEntity<Map<String, String>> upload(@RequestParam("file") MultipartFile file, HttpSession session) {
         try {
-            editorService.saveImage(payload.get("name"), payload.get("imageData"));
-            return "Успіх: Зображення збережено!";
-        } catch (IllegalStateException e) {
-            // Якщо патерн State заборонив дію
-            return "Помилка: " + e.getMessage();
+            String result = editorService.uploadImage(session.getId(), file);
+            return ResponseEntity.ok(Collections.singletonMap("image", result));
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError().body(Collections.singletonMap("error", "Upload failed"));
         }
+    }
+
+    @PostMapping("/api/update")
+    @ResponseBody
+    public ResponseEntity<String> updateLayer(@RequestBody Map<String, String> payload, HttpSession session) {
+        try {
+            editorService.updateDrawingLayer(session.getId(), payload.get("image"));
+            return ResponseEntity.ok("Layer updated");
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(403).body(e.getMessage());
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError().body("Update failed");
+        }
+    }
+
+    @PostMapping("/api/process/{action}")
+    @ResponseBody
+    public ResponseEntity<Map<String, String>> process(@PathVariable String action, HttpSession session) {
+        try {
+            String result = editorService.applyFilter(session.getId(), action);
+            if (result == null) return ResponseEntity.badRequest().body(Collections.singletonMap("error", "No image"));
+            return ResponseEntity.ok(Collections.singletonMap("image", result));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(403).body(Collections.singletonMap("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/api/archive")
+    @ResponseBody
+    public ResponseEntity<String> archive(HttpSession session) {
+        String msg = editorService.archiveProject(session.getId());
+        return ResponseEntity.ok(msg);
     }
 }

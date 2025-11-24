@@ -2,76 +2,284 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Графічний Редактор (Lab 4)</title>
+    <title>Layered Image Editor</title>
     <style>
-        body { background: #f4f4f4; font-family: Arial, sans-serif; text-align: center; }
-        canvas { background: white; border: 2px solid #333; cursor: crosshair; }
-        .toolbar { margin: 10px; padding: 10px; background: #ddd; border-radius: 5px; display: inline-block;}
-        button { padding: 5px 10px; margin: 0 5px; cursor: pointer; border: 1px solid #999; border-radius: 3px;}
-        button:hover { opacity: 0.8; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #e9ecef;
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+            height: 100vh;
+            box-sizing: border-box;
+            margin: 0;
+        }
+
+        /* ПАНЕЛЬ ІНСТРУМЕНТІВ */
+        .sidebar {
+            width: 250px;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            height: fit-content;
+        }
+
+        h3 { margin: 10px 0 5px 0; font-size: 1.1em; color: #333; }
+        hr { border: 0; border-top: 1px solid #ddd; width: 100%; margin: 10px 0; }
+
+        button {
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background-color: #007bff;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        button:hover { background-color: #0056b3; transform: translateY(-1px); }
+        
+        button.tool { background-color: #6c757d; }
+        button.tool.active { background-color: #28a745; box-shadow: 0 0 8px rgba(40, 167, 69, 0.5); }
+        
+        button.danger { background-color: #dc3545; }
+        button.danger:hover { background-color: #bd2130; }
+
+        /* РОБОЧА ОБЛАСТЬ (LAYERS) */
+        .workspace {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: auto;
+            position: relative;
+            background-image: radial-gradient(#ddd 1px, transparent 1px);
+            background-size: 20px 20px; /* Сітка для прозорості */
+        }
+
+        /* КОНТЕЙНЕР ДЛЯ ШАРІВ */
+        #layer-stack {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+            display: none; /* Приховано до завантаження */
+        }
+
+        /* ШАР 0: ФОТО */
+        #bg-layer {
+            display: block;
+            max-width: 100%;
+            pointer-events: none; /* Щоб кліки проходили крізь картинку (хоча вона знизу) */
+        }
+
+        /* ШАР 1: МАЛЮВАННЯ */
+        #draw-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            cursor: crosshair;
+            /* Цей шар лежить зверху */
+        }
+
+        #status-msg {
+            color: #dc3545;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
-    <div class="toolbar">
-        <button onclick="setTool('brush')">✏️ Пензлик</button>
-        <button onclick="setTool('eraser')">🧽 Гумка</button>
-        <button onclick="clearCanvas()">🗑️ Очистити</button>
 
-        <span style="margin: 0 15px; color: #aaa;">|</span>
+    <div class="sidebar">
+        <h3>📂 Проект</h3>
+        <input type="file" id="fileInput" accept="image/*">
+        <button onclick="upload()">Завантажити фото</button>
+        <button class="danger" onclick="archive()">🔒 В Архів (State)</button>
 
-        <button onclick="changeState('active')" style="background: #007bff; color: white;">🔓 Активувати</button>
-        <button onclick="changeState('archived')" style="background: #6c757d; color: white;">🔒 Архівувати</button>
+        <hr>
+        <h3>🖌️ Інструменти</h3>
+        <button class="tool active" onclick="setTool('brush')" id="btn-brush">Пензлик</button>
+        <button class="tool" onclick="setTool('eraser')" id="btn-eraser">Гумка</button>
 
-        <span style="margin: 0 15px; color: #aaa;">|</span>
+        <hr>
+        <h3>✨ Фільтри (Prototype)</h3>
+        <small style="color:gray; font-size: 0.8em; margin-bottom: 5px;">Діють на нижній шар</small>
+        <button onclick="applyFilter('grayscale')">Чорно-білий</button>
+        <button onclick="applyFilter('invert')">Інверсія</button>
 
-        <button onclick="saveToServer()" style="background: #28a745; color: white;">💾 Зберегти в БД</button>
+        <div id="status-msg"></div>
     </div>
-    
-    <br>
-    <canvas id="c" width="800" height="600"></canvas>
 
-    <script>
-        const canvas = document.getElementById('c');
-        const ctx = canvas.getContext('2d');
-        let isDrawing = false;
-        let tool = 'brush';
+    <div class="workspace">
+        <span id="placeholder" style="color: #888;">Завантажте зображення...</span>
+        
+        <div id="layer-stack">
+            <img id="bg-layer" alt="Background Layer">
+            <canvas id="draw-layer"></canvas>
+        </div>
+    </div>
 
-        // --- Логіка малювання ---
-        canvas.onmousedown = (e) => { isDrawing = true; ctx.beginPath(); ctx.moveTo(e.offsetX, e.offsetY); };
-        canvas.onmouseup = () => isDrawing = false;
-        canvas.onmousemove = (e) => {
-            if (!isDrawing) return;
-            ctx.lineWidth = 5;
-            ctx.lineCap = 'round';
-            ctx.strokeStyle = (tool === 'brush') ? 'black' : 'white';
-            ctx.lineTo(e.offsetX, e.offsetY);
-            ctx.stroke();
+<script>
+    const stack = document.getElementById('layer-stack');
+    const bgImg = document.getElementById('bg-layer');
+    const canvas = document.getElementById('draw-layer');
+    const ctx = canvas.getContext('2d');
+    const statusMsg = document.getElementById('status-msg');
+
+    let currentTool = 'brush';
+    let isDrawing = false;
+
+    // --- ЛОГІКА МАЛЮВАННЯ (Frontend) ---
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', endDraw);
+    canvas.addEventListener('mouseout', endDraw);
+
+    function startDraw(e) {
+        isDrawing = true;
+        draw(e);
+    }
+
+    function draw(e) {
+        if (!isDrawing) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        ctx.lineWidth = 10;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        if (currentTool === 'brush') {
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)'; // Червоний напівпрозорий
+        } else {
+            // ГУМКА: Стирає пікселі Canvas, роблячи дірку до фотографії знизу
+            ctx.globalCompositeOperation = 'destination-out';
+        }
+
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+    }
+
+    function endDraw() {
+        if (!isDrawing) return;
+        isDrawing = false;
+        ctx.beginPath();
+        syncLayer(); // Відправляємо зміни на сервер
+    }
+
+    function setTool(tool) {
+        currentTool = tool;
+        document.querySelectorAll('.tool').forEach(b => b.classList.remove('active'));
+        document.getElementById('btn-' + tool).classList.add('active');
+    }
+
+    // --- ВЗАЄМОДІЯ З СЕРВЕРОМ ---
+
+    async function upload() {
+        const file = document.getElementById('fileInput').files[0];
+        if (!file) return alert("Оберіть файл!");
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            const res = await fetch('/api/upload', { method: 'POST', body: formData });
+            const data = await res.json();
+            
+            // Налаштовуємо сцену
+            setupScene(data.image);
+            statusMsg.innerText = "";
+        } catch (e) {
+            console.error(e);
+            alert("Помилка завантаження");
+        }
+    }
+
+    function setupScene(base64Image) {
+        document.getElementById('placeholder').style.display = 'none';
+        stack.style.display = 'block';
+
+        // 1. Встановлюємо картинку на задній план (Шар 0)
+        bgImg.src = "data:image/png;base64," + base64Image;
+
+        // 2. Коли картинка завантажиться, підганяємо розмір Canvas
+        bgImg.onload = () => {
+            canvas.width = bgImg.width;
+            canvas.height = bgImg.height;
+            // Очищаємо canvas для нового малюнка
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
         };
+    }
 
-        function setTool(t) { tool = t; }
-        function clearCanvas() { ctx.clearRect(0,0,800,600); }
+    // Відправляємо тільки шар малювання на сервер
+    async function syncLayer() {
+        const base64 = canvas.toDataURL("image/png");
+        
+        const res = await fetch('/api/update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ image: base64 })
+        });
 
-        // --- Функція зміни стану (Патерн State) ---
-        function changeState(status) {
-            fetch('/api/state?status=' + status, { method: 'POST' })
-            .then(r => r.text())
-            .then(msg => alert("Сервер: " + msg));
+        if (res.status === 403) {
+            statusMsg.innerText = "Зміни заборонені (Архів)";
+            // Якщо сервер відхилив, можна очистити останній штрих (опціонально)
+        }
+    }
+
+    async function applyFilter(type) {
+        // 1. Спочатку синхронізуємо малюнок, щоб сервер мав актуальний стан
+        await syncLayer();
+
+        // 2. Просимо сервер застосувати фільтр
+        const res = await fetch(`/api/process/${type}`, { method: 'POST' });
+        
+        if (res.status === 403) {
+            statusMsg.innerText = "Проект в архіві!";
+            return;
         }
 
-        // --- Збереження (перевіряється сервером) ---
-        function saveToServer() {
-            const data = canvas.toDataURL();
-            fetch('/api/save', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({name: 'MyDrawing', imageData: data})
-            })
-            .then(r => r.text())
-            .then(msg => {
-                // Якщо прийде помилка (стан Archived), ми її побачимо тут
-                alert("Відповідь сервера: " + msg);
-            });
-        }
-    </script>
+        const data = await res.json();
+        
+        // ВАЖЛИВО: Сервер повертає склеєну картинку (Compositor.merge).
+        // Але ми хочемо залишити малювання живим на canvas.
+        // Тому ми оновлюємо тільки задній фон, якщо фільтр міняв тільки його.
+        // (Для простоти в цьому проекті ми просто оновлюємо фон результатом).
+        
+        bgImg.src = "data:image/png;base64," + data.image;
+        
+        // Оскільки сервер повернув Merged зображення (Фон + Малюнок),
+        // а у нас малюнок ще є на Canvas, він накладеться сам на себе і стане жирнішим.
+        // Щоб цього уникнути, очистимо Canvas, бо тепер малюнок "впікся" в фон.
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    async function archive() {
+        if (!confirm("Ви впевнені? Це заблокує редагування.")) return;
+        
+        const res = await fetch('/api/archive', { method: 'POST' });
+        const text = await res.text();
+        
+        statusMsg.innerText = text;
+        
+        // Візуальне блокування
+        canvas.style.pointerEvents = 'none'; // Забороняє малювати
+        document.body.style.opacity = "0.8";
+    }
+
+</script>
+
 </body>
 </html>
