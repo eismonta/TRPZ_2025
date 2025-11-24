@@ -29,9 +29,23 @@ public class WebEditorController {
         return "Registered!";
     }
 
+    // Новий метод для тестування патерна State
+    // Виклик: POST /api/state?status=archived
+    @PostMapping("/state")
+    public String setProjectState(@RequestParam String status) {
+        editorService.changeState(status);
+        return "Status changed to: " + status;
+    }
+    
+    // Онови метод saveImage, щоб ловити помилку
     @PostMapping("/save")
     public String saveImage(@RequestBody Map<String, String> payload) {
-        editorService.saveImage(payload.get("name"), payload.get("imageData"));
-        return "Image Saved to Database!";
+        try {
+            editorService.saveImage(payload.get("name"), payload.get("imageData"));
+            return "Успіх: Зображення збережено!";
+        } catch (IllegalStateException e) {
+            // Якщо патерн State заборонив дію
+            return "Помилка: " + e.getMessage();
+        }
     }
 }

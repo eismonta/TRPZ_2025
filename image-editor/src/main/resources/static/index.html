@@ -2,21 +2,31 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Графічний Редактор</title>
+    <title>Графічний Редактор (Lab 4)</title>
     <style>
         body { background: #f4f4f4; font-family: Arial, sans-serif; text-align: center; }
         canvas { background: white; border: 2px solid #333; cursor: crosshair; }
         .toolbar { margin: 10px; padding: 10px; background: #ddd; border-radius: 5px; display: inline-block;}
-        button { padding: 5px 10px; margin: 0 5px; cursor: pointer; }
+        button { padding: 5px 10px; margin: 0 5px; cursor: pointer; border: 1px solid #999; border-radius: 3px;}
+        button:hover { opacity: 0.8; }
     </style>
 </head>
 <body>
     <div class="toolbar">
-        <button onclick="setTool('brush')">Пензлик</button>
-        <button onclick="setTool('eraser')">Гумка</button>
-        <button onclick="clearCanvas()">Очистити</button>
+        <button onclick="setTool('brush')">✏️ Пензлик</button>
+        <button onclick="setTool('eraser')">🧽 Гумка</button>
+        <button onclick="clearCanvas()">🗑️ Очистити</button>
+
+        <span style="margin: 0 15px; color: #aaa;">|</span>
+
+        <button onclick="changeState('active')" style="background: #007bff; color: white;">🔓 Активувати</button>
+        <button onclick="changeState('archived')" style="background: #6c757d; color: white;">🔒 Архівувати</button>
+
+        <span style="margin: 0 15px; color: #aaa;">|</span>
+
         <button onclick="saveToServer()" style="background: #28a745; color: white;">💾 Зберегти в БД</button>
     </div>
+    
     <br>
     <canvas id="c" width="800" height="600"></canvas>
 
@@ -26,6 +36,7 @@
         let isDrawing = false;
         let tool = 'brush';
 
+        // --- Логіка малювання ---
         canvas.onmousedown = (e) => { isDrawing = true; ctx.beginPath(); ctx.moveTo(e.offsetX, e.offsetY); };
         canvas.onmouseup = () => isDrawing = false;
         canvas.onmousemove = (e) => {
@@ -40,6 +51,14 @@
         function setTool(t) { tool = t; }
         function clearCanvas() { ctx.clearRect(0,0,800,600); }
 
+        // --- Функція зміни стану (Патерн State) ---
+        function changeState(status) {
+            fetch('/api/state?status=' + status, { method: 'POST' })
+            .then(r => r.text())
+            .then(msg => alert("Сервер: " + msg));
+        }
+
+        // --- Збереження (перевіряється сервером) ---
         function saveToServer() {
             const data = canvas.toDataURL();
             fetch('/api/save', {
@@ -48,7 +67,10 @@
                 body: JSON.stringify({name: 'MyDrawing', imageData: data})
             })
             .then(r => r.text())
-            .then(msg => alert(msg));
+            .then(msg => {
+                // Якщо прийде помилка (стан Archived), ми її побачимо тут
+                alert("Відповідь сервера: " + msg);
+            });
         }
     </script>
 </body>
