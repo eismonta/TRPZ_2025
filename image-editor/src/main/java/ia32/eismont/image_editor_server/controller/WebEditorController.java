@@ -22,10 +22,6 @@ public class WebEditorController {
         this.editorService = editorService;
     }
 
-    // ВАЖЛИВО: Ми видалили метод @GetMapping("/"), 
-    // щоб Spring автоматично відкривав index.html з папки static.
-    // Це найнадійніший спосіб.
-
     @PostMapping("/api/upload")
     @ResponseBody
     public ResponseEntity<Map<String, String>> upload(@RequestParam("file") MultipartFile file, HttpSession session) {
@@ -55,10 +51,20 @@ public class WebEditorController {
     public ResponseEntity<Map<String, String>> process(@PathVariable String action, HttpSession session) {
         try {
             String result = editorService.applyFilter(session.getId(), action);
-            if (result == null) return ResponseEntity.badRequest().body(Collections.singletonMap("error", "No image"));
             return ResponseEntity.ok(Collections.singletonMap("image", result));
         } catch (IllegalStateException e) {
             return ResponseEntity.status(403).body(Collections.singletonMap("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/api/undo")
+    @ResponseBody
+    public ResponseEntity<Map<String, String>> undo(HttpSession session) {
+        try {
+            String result = editorService.undoLastAction(session.getId());
+            return ResponseEntity.ok(Collections.singletonMap("image", result));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Collections.singletonMap("error", e.getMessage()));
         }
     }
 

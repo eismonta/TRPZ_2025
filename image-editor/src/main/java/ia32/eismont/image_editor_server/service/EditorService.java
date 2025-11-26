@@ -3,11 +3,14 @@ package ia32.eismont.image_editor_server.service;
 import ia32.eismont.image_editor_server.entity.Layer;
 import ia32.eismont.image_editor_server.entity.LayerGroup;
 import ia32.eismont.image_editor_server.entity.Project;
+import ia32.eismont.image_editor_server.patterns.memento.HistoryCaretaker;
+import ia32.eismont.image_editor_server.patterns.memento.ProjectMemento;
+import ia32.eismont.image_editor_server.patterns.prototype.ImageState;
 import ia32.eismont.image_editor_server.repository.ProjectRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
@@ -22,34 +25,29 @@ import java.util.Optional;
 public class EditorService {
 
     private final ProjectRepository projectRepository;
+    private final HistoryCaretaker historyCaretaker;
 
     @Autowired
-    public EditorService(ProjectRepository projectRepository) {
+    public EditorService(ProjectRepository projectRepository, HistoryCaretaker historyCaretaker) {
         this.projectRepository = projectRepository;
+        this.historyCaretaker = historyCaretaker;
     }
 
-    // Завантаження: Створюємо запис у БД
     @Transactional
     public String uploadImage(String sessionId, MultipartFile file) throws IOException {
-        // Видаляємо старий проект цієї сесії, якщо був
+        historyCaretaker.clearHistory(sessionId);
+
         Optional<Project> oldProject = projectRepository.findBySessionId(sessionId);
         oldProject.ifPresent(projectRepository::delete);
 
-        // Створюємо новий
         Project project = new Project(sessionId);
-        
         BufferedImage bgImage = ImageIO.read(new ByteArrayInputStream(file.getBytes()));
         
-        // Шар 0: Фон
         project.addLayer(new Layer(bgImage));
-        
-        // Шар 1: Прозорий для малювання
         BufferedImage transparent = new BufferedImage(bgImage.getWidth(), bgImage.getHeight(), BufferedImage.TYPE_INT_ARGB);
         project.addLayer(new Layer(transparent));
 
-        // Зберігаємо в базу!
         projectRepository.save(project);
-
         return imageToBase64(mergeProjectLayers(project));
     }
 
@@ -58,11 +56,12 @@ public class EditorService {
         Project project = getProjectOrThrow(sessionId);
         checkEditable(project);
 
+        saveStateToHistory(sessionId, project);
+
         String base64Data = base64Image.split(",")[1];
         byte[] imageBytes = Base64.getDecoder().decode(base64Data);
         BufferedImage newDrawing = ImageIO.read(new ByteArrayInputStream(imageBytes));
 
-        // Оновлюємо Шар 1 і зберігаємо зміни в базу
         project.getLayer(1).setImage(newDrawing);
         projectRepository.save(project);
     }
@@ -72,16 +71,33 @@ public class EditorService {
         Project project = getProjectOrThrow(sessionId);
         checkEditable(project);
 
-        // Беремо фон (Шар 0)
+        saveStateToHistory(sessionId, project);
+
         BufferedImage bg = project.getLayer(0).getImage();
         
-        // Застосовуємо фільтр
         processImage(bg, filterType);
         
-        // Зберігаємо змінений фон назад у базу
         project.getLayer(0).setImage(bg);
         projectRepository.save(project);
 
+
+        return imageToBase64(bg); 
+    }
+    
+    @Transactional
+    public String undoLastAction(String sessionId) {
+        Project project = getProjectOrThrow(sessionId);
+        checkEditable(project);
+
+        ProjectMemento memento = historyCaretaker.undo(sessionId);
+        
+        if (memento == null) {
+            throw new IllegalStateException("Історія порожня, скасування неможливе");
+        }
+
+        restoreStateFromMemento(project, memento);
+        projectRepository.save(project);
+        
         return imageToBase64(mergeProjectLayers(project));
     }
 
@@ -90,10 +106,23 @@ public class EditorService {
         Project project = getProjectOrThrow(sessionId);
         project.setStatus("ARCHIVED");
         projectRepository.save(project);
-        return "Проект збережено в базу і архівовано.";
+        return "Проект архівовано.";
     }
 
-    // --- Допоміжні методи ---
+
+    private void saveStateToHistory(String sessionId, Project project) {
+        LayerGroup group = new LayerGroup();
+        project.getLayers().forEach(group::addLayer);
+        ImageState currentState = new ImageState(group);
+        ProjectMemento memento = new ProjectMemento(currentState);
+        historyCaretaker.saveState(sessionId, memento);
+    }
+
+    private void restoreStateFromMemento(Project project, ProjectMemento memento) {
+        ImageState state = memento.getState();
+        project.getLayers().clear();
+        state.getLayerGroup().getLayers().forEach(project::addLayer);
+    }
 
     private Project getProjectOrThrow(String sessionId) {
         return projectRepository.findBySessionId(sessionId)
@@ -102,20 +131,17 @@ public class EditorService {
 
     private void checkEditable(Project project) {
         if ("ARCHIVED".equals(project.getStatus())) {
-            throw new IllegalStateException("Проект в архіві (Database)");
+            throw new IllegalStateException("Проект в архіві (State Pattern)");
         }
     }
 
-    // Це наш аналог Compositor, тільки прямо тут для зручності
     private BufferedImage mergeProjectLayers(Project project) {
-        // Конвертуємо Entity Layers у LayerGroup для сумісності з логікою Compositor
         LayerGroup group = new LayerGroup();
         project.getLayers().forEach(group::addLayer);
         return Compositor.merge(group);
     }
 
     private void processImage(BufferedImage img, String filterType) {
-        // Стандартна логіка фільтрів (grayscale/invert) з минулого разу
         switch (filterType) {
             case "grayscale":
                 for (int x = 0; x < img.getWidth(); x++) {

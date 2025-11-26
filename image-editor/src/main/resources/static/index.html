@@ -2,129 +2,72 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Layered Image Editor</title>
+    <title>Graphic Editor (Final Fix)</title>
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #e9ecef;
-            display: flex;
-            gap: 20px;
-            padding: 20px;
-            height: 100vh;
-            box-sizing: border-box;
-            margin: 0;
-        }
-
-        /* ПАНЕЛЬ ІНСТРУМЕНТІВ */
+        body { font-family: 'Segoe UI', sans-serif; background: #e9ecef; display: flex; gap: 20px; padding: 20px; height: 100vh; margin: 0; box-sizing: border-box; }
+        
         .sidebar {
-            width: 250px;
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            height: fit-content;
+            width: 260px; background: white; padding: 20px; border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 10px; flex-shrink: 0;
         }
-
-        h3 { margin: 10px 0 5px 0; font-size: 1.1em; color: #333; }
+        h3 { margin: 5px 0; font-size: 1.1em; color: #333; }
         hr { border: 0; border-top: 1px solid #ddd; width: 100%; margin: 10px 0; }
-
         button {
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            background-color: #007bff;
-            color: white;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
+            padding: 12px; border: none; border-radius: 8px; background-color: #007bff; color: white;
+            font-weight: 600; cursor: pointer; transition: all 0.2s; text-align: left; position: relative;
         }
         button:hover { background-color: #0056b3; transform: translateY(-1px); }
-        
-        button.tool { background-color: #6c757d; }
+        button.tool { background-color: #6c757d; text-align: center; }
         button.tool.active { background-color: #28a745; box-shadow: 0 0 8px rgba(40, 167, 69, 0.5); }
-        
+        button.warning { background-color: #ffc107; color: #333; }
         button.danger { background-color: #dc3545; }
-        button.danger:hover { background-color: #bd2130; }
 
-        /* РОБОЧА ОБЛАСТЬ (LAYERS) */
         .workspace {
-            flex: 1;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            overflow: auto;
-            position: relative;
-            background-image: radial-gradient(#ddd 1px, transparent 1px);
-            background-size: 20px 20px; /* Сітка для прозорості */
+            flex: 1; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex; justify-content: center; align-items: center; overflow: auto; position: relative;
+            background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 20px 20px; padding: 20px;
         }
 
-        /* КОНТЕЙНЕР ДЛЯ ШАРІВ */
-        #layer-stack {
-            position: relative;
-            box-shadow: 0 0 20px rgba(0,0,0,0.3);
-            display: none; /* Приховано до завантаження */
-        }
-
-        /* ШАР 0: ФОТО */
-        #bg-layer {
-            display: block;
-            max-width: 100%;
-            pointer-events: none; /* Щоб кліки проходили крізь картинку (хоча вона знизу) */
-        }
-
-        /* ШАР 1: МАЛЮВАННЯ */
-        #draw-layer {
-            position: absolute;
-            top: 0;
-            left: 0;
-            cursor: crosshair;
-            /* Цей шар лежить зверху */
-        }
-
-        #status-msg {
-            color: #dc3545;
-            font-weight: bold;
-            text-align: center;
-            margin-top: 10px;
-        }
+        #layer-stack { position: relative; line-height: 0; width: fit-content; display: none; max-width: 100%; }
+        
+        #bg-layer { display: block; max-width: 100%; height: auto; position: relative; z-index: 1; pointer-events: none; }
+        #draw-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: crosshair; touch-action: none; }
+        
+        #status-msg { color: #dc3545; font-weight: bold; text-align: center; margin-top: 10px; min-height: 20px; font-size: 0.9em; }
     </style>
 </head>
 <body>
 
-    <div class="sidebar">
-        <h3>📂 Проект</h3>
-        <input type="file" id="fileInput" accept="image/*">
-        <button onclick="upload()">Завантажити фото</button>
-        <button class="danger" onclick="archive()">🔒 В Архів (State)</button>
+<div class="sidebar">
+    <h3>📂 Проект</h3>
+    <input type="file" id="fileInput" accept="image/*">
+    <button onclick="upload()">📤 Завантажити фото</button>
+    <button class="warning" onclick="undoAction()">↩ Скасувати (Memento)</button>
+    <button class="danger" onclick="archive()">🔒 В Архів (State)</button>
 
-        <hr>
-        <h3>🖌️ Інструменти</h3>
-        <button class="tool active" onclick="setTool('brush')" id="btn-brush">Пензлик</button>
-        <button class="tool" onclick="setTool('eraser')" id="btn-eraser">Гумка</button>
-
-        <hr>
-        <h3>✨ Фільтри (Prototype)</h3>
-        <small style="color:gray; font-size: 0.8em; margin-bottom: 5px;">Діють на нижній шар</small>
-        <button onclick="applyFilter('grayscale')">Чорно-білий</button>
-        <button onclick="applyFilter('invert')">Інверсія</button>
-
-        <div id="status-msg"></div>
+    <hr>
+    <h3>🖌️ Інструменти</h3>
+    <div style="display: flex; gap: 5px;">
+        <button class="tool active" style="flex:1" onclick="setTool('brush')" id="btn-brush">Пензлик</button>
+        <button class="tool" style="flex:1" onclick="setTool('eraser')" id="btn-eraser">Гумка</button>
     </div>
 
-    <div class="workspace">
-        <span id="placeholder" style="color: #888;">Завантажте зображення...</span>
-        
-        <div id="layer-stack">
-            <img id="bg-layer" alt="Background Layer">
-            <canvas id="draw-layer"></canvas>
-        </div>
+    <hr>
+    <h3>✨ Фільтри (Prototype)</h3>
+    <small style="color:gray; font-size: 0.8em; margin-bottom: 5px; display:block;">Обробка на сервері:</small>
+    <button onclick="applyFilter('grayscale')">Чорно-білий</button>
+    <button onclick="applyFilter('invert')">Інверсія кольорів</button>
+
+    <div id="status-msg"></div>
+</div>
+
+<div class="workspace">
+    <span id="placeholder" style="color: #888; font-size: 1.2em;">Завантажте зображення...</span>
+    <div id="layer-stack">
+        <img id="bg-layer" alt="Background">
+        <canvas id="draw-layer"></canvas>
     </div>
+</div>
 
 <script>
     const stack = document.getElementById('layer-stack');
@@ -132,153 +75,112 @@
     const canvas = document.getElementById('draw-layer');
     const ctx = canvas.getContext('2d');
     const statusMsg = document.getElementById('status-msg');
+    const placeholder = document.getElementById('placeholder');
 
-    let currentTool = 'brush';
-    let isDrawing = false;
+    let currentTool = 'brush', isDrawing = false;
 
-    // --- ЛОГІКА МАЛЮВАННЯ (Frontend) ---
-    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousedown', e => { isDrawing = true; draw(e); });
     canvas.addEventListener('mousemove', draw);
-    canvas.addEventListener('mouseup', endDraw);
-    canvas.addEventListener('mouseout', endDraw);
-
-    function startDraw(e) {
-        isDrawing = true;
-        draw(e);
-    }
+    canvas.addEventListener('mouseup', () => { isDrawing = false; ctx.beginPath(); syncLayer(); });
+    canvas.addEventListener('mouseout', () => { isDrawing = false; ctx.beginPath(); });
 
     function draw(e) {
         if (!isDrawing) return;
-
         const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+        const y = (e.clientY - rect.top) * (canvas.height / rect.height);
 
-        ctx.lineWidth = 10;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        if (currentTool === 'brush') {
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)'; // Червоний напівпрозорий
-        } else {
-            // ГУМКА: Стирає пікселі Canvas, роблячи дірку до фотографії знизу
-            ctx.globalCompositeOperation = 'destination-out';
-        }
-
-        ctx.lineTo(x, y);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(x, y);
+        ctx.lineWidth = 10; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.globalCompositeOperation = currentTool === 'brush' ? 'source-over' : 'destination-out';
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+        
+        ctx.lineTo(x, y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x, y);
     }
 
-    function endDraw() {
-        if (!isDrawing) return;
-        isDrawing = false;
-        ctx.beginPath();
-        syncLayer(); // Відправляємо зміни на сервер
-    }
-
-    function setTool(tool) {
-        currentTool = tool;
+    function setTool(t) {
+        currentTool = t;
         document.querySelectorAll('.tool').forEach(b => b.classList.remove('active'));
-        document.getElementById('btn-' + tool).classList.add('active');
+        document.getElementById('btn-' + t).classList.add('active');
     }
-
-    // --- ВЗАЄМОДІЯ З СЕРВЕРОМ ---
 
     async function upload() {
         const file = document.getElementById('fileInput').files[0];
         if (!file) return alert("Оберіть файл!");
-
+        
         const formData = new FormData();
         formData.append("file", file);
+        statusMsg.innerText = "Завантаження...";
 
         try {
             const res = await fetch('/api/upload', { method: 'POST', body: formData });
-            const data = await res.json();
-            
-            // Налаштовуємо сцену
-            setupScene(data.image);
-            statusMsg.innerText = "";
-        } catch (e) {
-            console.error(e);
-            alert("Помилка завантаження");
-        }
+            if(res.ok) {
+                const data = await res.json();
+                
+                placeholder.style.display = 'none';
+                stack.style.display = 'block';
+                
+                bgImg.src = "data:image/png;base64," + data.image;
+                
+                bgImg.onload = () => {
+                    canvas.width = bgImg.naturalWidth;
+                    canvas.height = bgImg.naturalHeight;
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    bgImg.onload = null; 
+                };
+                statusMsg.innerText = "Готово";
+            }
+        } catch (e) { alert("Помилка сервера"); }
     }
 
-    function setupScene(base64Image) {
-        document.getElementById('placeholder').style.display = 'none';
-        stack.style.display = 'block';
-
-        // 1. Встановлюємо картинку на задній план (Шар 0)
-        bgImg.src = "data:image/png;base64," + base64Image;
-
-        // 2. Коли картинка завантажиться, підганяємо розмір Canvas
-        bgImg.onload = () => {
-            canvas.width = bgImg.width;
-            canvas.height = bgImg.height;
-            // Очищаємо canvas для нового малюнка
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-        };
-    }
-
-    // Відправляємо тільки шар малювання на сервер
     async function syncLayer() {
-        const base64 = canvas.toDataURL("image/png");
-        
-        const res = await fetch('/api/update', {
+        await fetch('/api/update', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ image: base64 })
+            body: JSON.stringify({ image: canvas.toDataURL() })
         });
-
-        if (res.status === 403) {
-            statusMsg.innerText = "Зміни заборонені (Архів)";
-            // Якщо сервер відхилив, можна очистити останній штрих (опціонально)
-        }
     }
 
     async function applyFilter(type) {
-        // 1. Спочатку синхронізуємо малюнок, щоб сервер мав актуальний стан
-        await syncLayer();
+        statusMsg.innerText = "Обробка...";
+        await syncLayer(); 
 
-        // 2. Просимо сервер застосувати фільтр
         const res = await fetch(`/api/process/${type}`, { method: 'POST' });
-        
         if (res.status === 403) {
-            statusMsg.innerText = "Проект в архіві!";
+            statusMsg.innerText = "🔒 " + (await res.json()).error;
             return;
         }
 
-        const data = await res.json();
-        
-        // ВАЖЛИВО: Сервер повертає склеєну картинку (Compositor.merge).
-        // Але ми хочемо залишити малювання живим на canvas.
-        // Тому ми оновлюємо тільки задній фон, якщо фільтр міняв тільки його.
-        // (Для простоти в цьому проекті ми просто оновлюємо фон результатом).
-        
-        bgImg.src = "data:image/png;base64," + data.image;
-        
-        // Оскільки сервер повернув Merged зображення (Фон + Малюнок),
-        // а у нас малюнок ще є на Canvas, він накладеться сам на себе і стане жирнішим.
-        // Щоб цього уникнути, очистимо Canvas, бо тепер малюнок "впікся" в фон.
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if(res.ok) {
+            const data = await res.json();
+            
+            bgImg.src = "data:image/png;base64," + data.image;
+            
+            statusMsg.innerText = "Фільтр застосовано";
+        }
     }
 
+    async function undoAction() {
+        statusMsg.innerText = "Скасування...";
+        const res = await fetch('/api/undo', { method: 'POST' });
+        if (res.ok) {
+            const data = await res.json();
+            bgImg.src = "data:image/png;base64," + data.image;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            statusMsg.innerText = "↩ Дію скасовано";
+        } else {
+            statusMsg.innerText = "Неможливо скасувати";
+        }
+    }
+    
     async function archive() {
-        if (!confirm("Ви впевнені? Це заблокує редагування.")) return;
-        
+        if(!confirm("Архівувати?")) return;
         const res = await fetch('/api/archive', { method: 'POST' });
-        const text = await res.text();
-        
-        statusMsg.innerText = text;
-        
-        // Візуальне блокування
-        canvas.style.pointerEvents = 'none'; // Забороняє малювати
-        document.body.style.opacity = "0.8";
+        statusMsg.innerText = "🔒 " + await res.text();
+        canvas.style.pointerEvents = 'none';
+        document.body.style.opacity = "0.7";
     }
-
 </script>
 
 </body>

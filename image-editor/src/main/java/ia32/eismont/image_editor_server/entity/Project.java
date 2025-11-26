@@ -12,13 +12,11 @@ public class Project {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // ID сесії користувача (щоб знати, чий це проект)
     private String sessionId;
 
     @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     private List<Layer> layers = new ArrayList<>();
 
-    // Стан проекту (Active/Archived) зберігаємо як рядок
     private String status = "ACTIVE"; 
 
     public Project() {}
@@ -27,7 +25,6 @@ public class Project {
         this.sessionId = sessionId;
     }
 
-    // --- Методи для роботи з шарами ---
     public void addLayer(Layer layer) {
         this.layers.add(layer);
     }
@@ -44,7 +41,6 @@ public class Project {
         this.layers = layers;
     }
 
-    // --- Getters/Setters ---
     public Long getId() { return id; }
     public String getSessionId() { return sessionId; }
     public void setSessionId(String sessionId) { this.sessionId = sessionId; }

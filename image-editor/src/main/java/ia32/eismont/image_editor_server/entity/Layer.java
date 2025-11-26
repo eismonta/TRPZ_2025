@@ -15,14 +15,12 @@ public class Layer {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Зберігаємо картинку як масив байтів у базі
     @Lob 
-    @Column(columnDefinition = "BLOB") // Для H2 бази даних
+    @Column(columnDefinition = "BLOB")
     private byte[] imageData;
 
     private boolean isVisible;
 
-    // Потрібен порожній конструктор для JPA
     public Layer() {}
 
     public Layer(BufferedImage image) {
@@ -30,9 +28,6 @@ public class Layer {
         this.isVisible = true;
     }
 
-    // --- Магічні методи конвертації ---
-
-    // Коли просимо картинку, перетворюємо байти назад у BufferedImage
     public BufferedImage getImage() {
         if (imageData == null) return null;
         try {
@@ -42,7 +37,6 @@ public class Layer {
         }
     }
 
-    // Коли зберігаємо картинку, перетворюємо її в байти
     public void setImage(BufferedImage image) {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             ImageIO.write(image, "png", baos);
@@ -52,7 +46,6 @@ public class Layer {
         }
     }
 
-    // --- Standard Getters/Setters ---
     public Long getId() { return id; }
     public boolean isVisible() { return isVisible; }
     public void setVisible(boolean visible) { isVisible = visible; }
