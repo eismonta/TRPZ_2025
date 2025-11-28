@@ -7,18 +7,15 @@ import ia32.eismont.image_editor_server.patterns.memento.HistoryCaretaker;
 import ia32.eismont.image_editor_server.patterns.memento.ProjectMemento;
 import ia32.eismont.image_editor_server.patterns.prototype.ImageState;
 import ia32.eismont.image_editor_server.repository.ProjectRepository;
+import ia32.eismont.image_editor_server.service.subsystem.FilterEngine;
+import ia32.eismont.image_editor_server.service.subsystem.ImageUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.imageio.ImageIO;
-import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.Base64;
 import java.util.Optional;
 
 @Service
@@ -26,41 +23,46 @@ public class EditorService {
 
     private final ProjectRepository projectRepository;
     private final HistoryCaretaker historyCaretaker;
+    private final ImageUtils imageUtils; 
+    private final FilterEngine filterEngine; 
 
     @Autowired
-    public EditorService(ProjectRepository projectRepository, HistoryCaretaker historyCaretaker) {
+    public EditorService(ProjectRepository projectRepository, 
+                         HistoryCaretaker historyCaretaker,
+                         ImageUtils imageUtils,
+                         FilterEngine filterEngine) {
         this.projectRepository = projectRepository;
         this.historyCaretaker = historyCaretaker;
+        this.imageUtils = imageUtils;
+        this.filterEngine = filterEngine;
     }
 
     @Transactional
     public String uploadImage(String sessionId, MultipartFile file) throws IOException {
         historyCaretaker.clearHistory(sessionId);
-
         Optional<Project> oldProject = projectRepository.findBySessionId(sessionId);
         oldProject.ifPresent(projectRepository::delete);
 
         Project project = new Project(sessionId);
-        BufferedImage bgImage = ImageIO.read(new ByteArrayInputStream(file.getBytes()));
         
-        project.addLayer(new Layer(bgImage));
+        BufferedImage bgImage = imageUtils.readImage(file);
+        
+        project.addLayer(new Layer(bgImage)); 
         BufferedImage transparent = new BufferedImage(bgImage.getWidth(), bgImage.getHeight(), BufferedImage.TYPE_INT_ARGB);
         project.addLayer(new Layer(transparent));
 
         projectRepository.save(project);
-        return imageToBase64(mergeProjectLayers(project));
+        
+        return imageUtils.encodeToBase64(mergeProjectLayers(project));
     }
 
     @Transactional
     public void updateDrawingLayer(String sessionId, String base64Image) throws IOException {
         Project project = getProjectOrThrow(sessionId);
         checkEditable(project);
-
         saveStateToHistory(sessionId, project);
 
-        String base64Data = base64Image.split(",")[1];
-        byte[] imageBytes = Base64.getDecoder().decode(base64Data);
-        BufferedImage newDrawing = ImageIO.read(new ByteArrayInputStream(imageBytes));
+        BufferedImage newDrawing = imageUtils.decodeBase64(base64Image);
 
         project.getLayer(1).setImage(newDrawing);
         projectRepository.save(project);
@@ -70,35 +72,30 @@ public class EditorService {
     public String applyFilter(String sessionId, String filterType) {
         Project project = getProjectOrThrow(sessionId);
         checkEditable(project);
-
         saveStateToHistory(sessionId, project);
 
         BufferedImage bg = project.getLayer(0).getImage();
         
-        processImage(bg, filterType);
+        filterEngine.applyFilter(bg, filterType);
         
         project.getLayer(0).setImage(bg);
         projectRepository.save(project);
 
-
-        return imageToBase64(bg); 
+        return imageUtils.encodeToBase64(bg);
     }
-    
+
     @Transactional
     public String undoLastAction(String sessionId) {
         Project project = getProjectOrThrow(sessionId);
         checkEditable(project);
 
         ProjectMemento memento = historyCaretaker.undo(sessionId);
-        
-        if (memento == null) {
-            throw new IllegalStateException("Історія порожня, скасування неможливе");
-        }
+        if (memento == null) throw new IllegalStateException("Історія порожня");
 
         restoreStateFromMemento(project, memento);
         projectRepository.save(project);
         
-        return imageToBase64(mergeProjectLayers(project));
+        return imageUtils.encodeToBase64(mergeProjectLayers(project));
     }
 
     @Transactional
@@ -109,13 +106,11 @@ public class EditorService {
         return "Проект архівовано.";
     }
 
-
+    // --- Helpers ---
     private void saveStateToHistory(String sessionId, Project project) {
         LayerGroup group = new LayerGroup();
         project.getLayers().forEach(group::addLayer);
-        ImageState currentState = new ImageState(group);
-        ProjectMemento memento = new ProjectMemento(currentState);
-        historyCaretaker.saveState(sessionId, memento);
+        historyCaretaker.saveState(sessionId, new ProjectMemento(new ImageState(group)));
     }
 
     private void restoreStateFromMemento(Project project, ProjectMemento memento) {
@@ -125,50 +120,16 @@ public class EditorService {
     }
 
     private Project getProjectOrThrow(String sessionId) {
-        return projectRepository.findBySessionId(sessionId)
-                .orElseThrow(() -> new RuntimeException("Project not found"));
+        return projectRepository.findBySessionId(sessionId).orElseThrow(() -> new RuntimeException("Not found"));
     }
 
     private void checkEditable(Project project) {
-        if ("ARCHIVED".equals(project.getStatus())) {
-            throw new IllegalStateException("Проект в архіві (State Pattern)");
-        }
+        if ("ARCHIVED".equals(project.getStatus())) throw new IllegalStateException("Archived");
     }
 
     private BufferedImage mergeProjectLayers(Project project) {
         LayerGroup group = new LayerGroup();
         project.getLayers().forEach(group::addLayer);
         return Compositor.merge(group);
-    }
-
-    private void processImage(BufferedImage img, String filterType) {
-        switch (filterType) {
-            case "grayscale":
-                for (int x = 0; x < img.getWidth(); x++) {
-                    for (int y = 0; y < img.getHeight(); y++) {
-                        int rgb = img.getRGB(x, y);
-                        Color color = new Color(rgb);
-                        int gray = (color.getRed() + color.getGreen() + color.getBlue()) / 3;
-                        img.setRGB(x, y, new Color(gray, gray, gray).getRGB());
-                    }
-                }
-                break;
-            case "invert":
-                 for (int x = 0; x < img.getWidth(); x++) {
-                    for (int y = 0; y < img.getHeight(); y++) {
-                        int rgb = img.getRGB(x, y);
-                        Color color = new Color(rgb);
-                        img.setRGB(x, y, new Color(255 - color.getRed(), 255 - color.getGreen(), 255 - color.getBlue()).getRGB());
-                    }
-                }
-                break;
-        }
-    }
-
-    private String imageToBase64(BufferedImage image) {
-        try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
-            ImageIO.write(image, "png", os);
-            return Base64.getEncoder().encodeToString(os.toByteArray());
-        } catch (IOException e) { throw new RuntimeException(e); }
     }
 }
