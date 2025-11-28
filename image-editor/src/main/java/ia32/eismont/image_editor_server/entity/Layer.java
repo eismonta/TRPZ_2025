@@ -8,45 +8,46 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
 @Entity
-@Table(name = "layers")
-public class Layer {
+@DiscriminatorValue("LEAF")
+public class Layer extends GraphicComponent {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Lob 
+    @Lob
     @Column(columnDefinition = "BLOB")
     private byte[] imageData;
-
-    private boolean isVisible;
 
     public Layer() {}
 
     public Layer(BufferedImage image) {
         setImage(image);
-        this.isVisible = true;
     }
 
+    @Override
     public BufferedImage getImage() {
         if (imageData == null) return null;
         try {
             return ImageIO.read(new ByteArrayInputStream(imageData));
         } catch (IOException e) {
-            throw new RuntimeException("Помилка читання картинки з бази", e);
+            throw new RuntimeException("Error reading image", e);
         }
     }
 
+    @Override
     public void setImage(BufferedImage image) {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             ImageIO.write(image, "png", baos);
             this.imageData = baos.toByteArray();
         } catch (IOException e) {
-            throw new RuntimeException("Помилка запису картинки в базу", e);
+            throw new RuntimeException("Error saving image", e);
         }
     }
 
-    public Long getId() { return id; }
-    public boolean isVisible() { return isVisible; }
-    public void setVisible(boolean visible) { isVisible = visible; }
+    @Override
+    public GraphicComponent cloneComponent() {
+        Layer copy = new Layer();
+        if (this.imageData != null) {
+            copy.imageData = this.imageData.clone();
+        }
+        copy.setVisible(this.isVisible());
+        return copy;
+    }
 }

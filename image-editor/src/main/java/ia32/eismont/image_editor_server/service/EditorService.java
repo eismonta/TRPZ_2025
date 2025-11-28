@@ -1,7 +1,7 @@
 package ia32.eismont.image_editor_server.service;
 
+import ia32.eismont.image_editor_server.entity.GraphicComponent;
 import ia32.eismont.image_editor_server.entity.Layer;
-import ia32.eismont.image_editor_server.entity.LayerGroup;
 import ia32.eismont.image_editor_server.entity.Project;
 import ia32.eismont.image_editor_server.patterns.memento.HistoryCaretaker;
 import ia32.eismont.image_editor_server.patterns.memento.ProjectMemento;
@@ -23,14 +23,11 @@ public class EditorService {
 
     private final ProjectRepository projectRepository;
     private final HistoryCaretaker historyCaretaker;
-    private final ImageUtils imageUtils; 
-    private final FilterEngine filterEngine; 
+    private final ImageUtils imageUtils;
+    private final FilterEngine filterEngine;
 
     @Autowired
-    public EditorService(ProjectRepository projectRepository, 
-                         HistoryCaretaker historyCaretaker,
-                         ImageUtils imageUtils,
-                         FilterEngine filterEngine) {
+    public EditorService(ProjectRepository projectRepository, HistoryCaretaker historyCaretaker, ImageUtils imageUtils, FilterEngine filterEngine) {
         this.projectRepository = projectRepository;
         this.historyCaretaker = historyCaretaker;
         this.imageUtils = imageUtils;
@@ -44,16 +41,16 @@ public class EditorService {
         oldProject.ifPresent(projectRepository::delete);
 
         Project project = new Project(sessionId);
-        
         BufferedImage bgImage = imageUtils.readImage(file);
         
-        project.addLayer(new Layer(bgImage)); 
+
+        project.addComponent(new Layer(bgImage)); 
+        
         BufferedImage transparent = new BufferedImage(bgImage.getWidth(), bgImage.getHeight(), BufferedImage.TYPE_INT_ARGB);
-        project.addLayer(new Layer(transparent));
+        project.addComponent(new Layer(transparent));
 
         projectRepository.save(project);
-        
-        return imageUtils.encodeToBase64(mergeProjectLayers(project));
+        return imageUtils.encodeToBase64(Compositor.merge(project.getComponents()));
     }
 
     @Transactional
@@ -64,7 +61,8 @@ public class EditorService {
 
         BufferedImage newDrawing = imageUtils.decodeBase64(base64Image);
 
-        project.getLayer(1).setImage(newDrawing);
+        project.getComponent(1).setImage(newDrawing);
+        
         projectRepository.save(project);
     }
 
@@ -74,13 +72,11 @@ public class EditorService {
         checkEditable(project);
         saveStateToHistory(sessionId, project);
 
-        BufferedImage bg = project.getLayer(0).getImage();
-        
+        BufferedImage bg = project.getComponent(0).getImage();
         filterEngine.applyFilter(bg, filterType);
+        project.getComponent(0).setImage(bg);
         
-        project.getLayer(0).setImage(bg);
         projectRepository.save(project);
-
         return imageUtils.encodeToBase64(bg);
     }
 
@@ -95,7 +91,7 @@ public class EditorService {
         restoreStateFromMemento(project, memento);
         projectRepository.save(project);
         
-        return imageUtils.encodeToBase64(mergeProjectLayers(project));
+        return imageUtils.encodeToBase64(Compositor.merge(project.getComponents()));
     }
 
     @Transactional
@@ -106,17 +102,17 @@ public class EditorService {
         return "Проект архівовано.";
     }
 
-    // --- Helpers ---
+
+
     private void saveStateToHistory(String sessionId, Project project) {
-        LayerGroup group = new LayerGroup();
-        project.getLayers().forEach(group::addLayer);
-        historyCaretaker.saveState(sessionId, new ProjectMemento(new ImageState(group)));
+        ImageState state = new ImageState(project.getComponents());
+        historyCaretaker.saveState(sessionId, new ProjectMemento(state));
     }
 
     private void restoreStateFromMemento(Project project, ProjectMemento memento) {
         ImageState state = memento.getState();
-        project.getLayers().clear();
-        state.getLayerGroup().getLayers().forEach(project::addLayer);
+        project.getComponents().clear();
+        state.getComponents().forEach(project::addComponent);
     }
 
     private Project getProjectOrThrow(String sessionId) {
@@ -125,11 +121,5 @@ public class EditorService {
 
     private void checkEditable(Project project) {
         if ("ARCHIVED".equals(project.getStatus())) throw new IllegalStateException("Archived");
-    }
-
-    private BufferedImage mergeProjectLayers(Project project) {
-        LayerGroup group = new LayerGroup();
-        project.getLayers().forEach(group::addLayer);
-        return Compositor.merge(group);
     }
 }

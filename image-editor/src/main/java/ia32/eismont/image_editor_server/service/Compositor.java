@@ -1,30 +1,30 @@
 package ia32.eismont.image_editor_server.service;
 
-import ia32.eismont.image_editor_server.entity.Layer;
-import ia32.eismont.image_editor_server.entity.LayerGroup;
-
+import ia32.eismont.image_editor_server.entity.GraphicComponent;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.util.List;
 
 public class Compositor {
 
-    public static BufferedImage merge(LayerGroup group) {
-        List<Layer> layers = group.getLayers();
-        if (layers.isEmpty()) return null;
+    public static BufferedImage merge(List<GraphicComponent> components) {
+        if (components == null || components.isEmpty()) return null;
 
-        int width = layers.get(0).getImage().getWidth();
-        int height = layers.get(0).getImage().getHeight();
+        BufferedImage base = components.get(0).getImage();
+        if (base == null) return null;
 
-        BufferedImage combined = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = combined.createGraphics();
+        BufferedImage result = new BufferedImage(base.getWidth(), base.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = result.createGraphics();
 
-        for (Layer layer : layers) {
-            if (layer.isVisible() && layer.getImage() != null) {
-                g.drawImage(layer.getImage(), 0, 0, null);
+        for (GraphicComponent comp : components) {
+            if (comp.isVisible()) {
+                BufferedImage img = comp.getImage();
+                if (img != null) {
+                    g.drawImage(img, 0, 0, null);
+                }
             }
         }
         g.dispose();
-        return combined;
+        return result;
     }
 }

@@ -15,7 +15,7 @@ public class Project {
     private String sessionId;
 
     @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
-    private List<Layer> layers = new ArrayList<>();
+    private List<GraphicComponent> components = new ArrayList<>();
 
     private String status = "ACTIVE"; 
 
@@ -25,22 +25,23 @@ public class Project {
         this.sessionId = sessionId;
     }
 
-    public void addLayer(Layer layer) {
-        this.layers.add(layer);
+    public void addComponent(GraphicComponent component) {
+        this.components.add(component);
     }
 
-    public Layer getLayer(int index) {
-        return layers.get(index);
+    public GraphicComponent getComponent(int index) {
+        return components.get(index);
     }
 
-    public List<Layer> getLayers() {
-        return layers;
+    public List<GraphicComponent> getComponents() {
+        return components;
     }
 
-    public void setLayers(List<Layer> layers) {
-        this.layers = layers;
+    public void setComponents(List<GraphicComponent> components) {
+        this.components = components;
     }
 
+    // Getters/Setters
     public Long getId() { return id; }
     public String getSessionId() { return sessionId; }
     public void setSessionId(String sessionId) { this.sessionId = sessionId; }
